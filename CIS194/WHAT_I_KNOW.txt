@@ -1,0 +1,20 @@
+
+
+
+monoid: implements some mappend function, has identity (lists -> ++ and [])
+functor: something can can be mapped over
+applicative: only thing I get is <*> for the list instance. specifically when f is of type (* -> *), (f:fs) <*> xs = map f xs ++ fs <*> xs
+
+I don't understand anything else about functors, monads, etc. I don't get 'pure' or 'return'
+
+
+
+
+
+
+
+
+
+
+
+
