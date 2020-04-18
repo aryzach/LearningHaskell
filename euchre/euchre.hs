@@ -1,9 +1,25 @@
+module euchre where
+
+import shuffle
 import Text.Read
 import qualified Data.Map as M
 
-data Value = A | K | Q | J | Ten | Nine deriving (Show, Eq, Read, Ord)
-data Suit = Heart | Diamond | Spade | Club deriving (Show, Eq, Read)
+data Value = Nine | Ten | J | Q | K | A deriving (Show, Eq, Read, Ord, Enum, Bounded)
+data Suit = Heart | Diamond | Spade | Club deriving (Show, Eq, Read, Enum, Bounded)
 data Card = C Suit Value deriving (Show, Eq, Read, Ord)
+
+allCards :: [Card]
+allCards = [C s v | s <- [Heart .. Club], v <- [Nine .. A]]
+
+--test cards
+card1,card2,card3,card4,card5,card6,card7 :: Card
+card1 = C Heart A
+card2 = C Spade J
+card3 = C Spade A
+card4 = C Club  J
+card5 = C Diamond J
+card6 = C Club Nine
+card7 = C Club Q
 
 instance Ord Suit where
  compare _ _ = EQ
@@ -33,8 +49,8 @@ p4 = P "cool" 2 [C Heart K]
 startState :: State
 startState = S p1 p2 p3 p4 p2 0 [] (HS 0 0) (GS 0 0) 
 
-main :: IO ()
-main = handloop startState 
+--main :: IO ()
+--main = handloop startState 
 
 handloop :: State -> IO ()
 handloop s = 
@@ -43,7 +59,7 @@ handloop s =
      do newState <- singleTurn s  
         handloop newState 
     else
-     do scoreHand s
+     do 
         putStrLn "hand over"
         return ()
    
@@ -64,11 +80,17 @@ singleTurn s =
                  else
                   do putStrLn "you don't have that card"
                      return s
-
+{-
+ - can't do this until I have trump, can't get trump til I deal cards and handle that process
 scoreHand :: State -> IO State 
-scoreHand (S _ _ _ _ _ _ allCards _ _) = undefined 
- 
+scoreHand (S p1 p2 p3 p4 _ _ allCards hs gs) =
+ let (winName, winTeam) = sh' allCards
 
+ where winTup :: [(Player,Card)] -> (Player,Card)
+       winTup = foldr 
+       sh :: [(Player,Card)] -> (String,Team)
+       sh ac = (
+-}
 getCards :: Player -> [Card]
 getCards (P _ _ cs) = cs 
 
@@ -138,3 +160,18 @@ getName (P n _ _) = n
 
 getTeam :: Player -> Team
 getTeam (P _ t _) = t
+
+
+shuffle :: [a] -> IO [a]
+shuffle xs = do
+ ar <- newArray n xs
+ forM [1..n] $ \i -> do
+  j <- randomRIO (i,n)
+  vi <- readArray ar i
+  vj <- readArray ar j
+  writeArray ar j vi
+  return vj
+ where
+  n = length xs
+  newArray :: Int -> [a] -> IO (IOArray Int a)
+  newArray n xs =  newListArray (1,n) xs
