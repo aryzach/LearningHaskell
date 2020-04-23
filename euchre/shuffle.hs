@@ -1,4 +1,4 @@
-module shuffle where
+module Shuffle where
 
 import System.Random
 import Data.Array.IO

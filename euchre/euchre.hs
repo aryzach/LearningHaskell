@@ -1,17 +1,53 @@
-module euchre where
+module Euchre where
 
-import shuffle
+import Shuffle
 import Text.Read
 import qualified Data.Map as M
 
+--constructors, instance declarations, type synonyms
 data Value = Nine | Ten | J | Q | K | A deriving (Show, Eq, Read, Ord, Enum, Bounded)
 data Suit = Heart | Diamond | Spade | Club deriving (Show, Eq, Read, Enum, Bounded)
 data Card = C Suit Value deriving (Show, Eq, Read, Ord)
+data State = S (FourOf Player) CurrentPlayer Turn CurrentTrick Trump HandScore GameScore deriving (Show)
+data Player = P String Team [Card] deriving (Show, Eq, Ord)
+data FourOf a = F a a a a deriving (Show)
+data HandScore = HS Int Int deriving (Show)
+data GameScore = GS Int Int deriving (Show)
 
+type Trump = Card
+type Team = Int
+type CurrentPlayer = Player
+type CurrentTrick   = [(Player,Card)]
+type Turn = Int -- in normal Trick, 4 turns happen. Control for ending the Trick
+
+instance Ord Suit where
+ compare _ _ = EQ
+
+instance Functor FourOf where
+ fmap f (F a b c d) = F (f a) (f b) (f c) (f d)  
+
+instance Applicative FourOf where
+ pure a = F a a a a
+ (F f g h i) <*> (F a b c d) = F (f a) (g b) (h c) (i d) 
+
+--game constants
 allCards :: [Card]
 allCards = [C s v | s <- [Heart .. Club], v <- [Nine .. A]]
 
---test cards
+playerOrder :: M.Map Player Player
+playerOrder = M.fromList [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]
+
+startState :: State
+startState = S allPlayers p2 0 [] card1 (HS 0 0) (GS 0 0) 
+
+--test constants
+p1,p2,p3,p4 :: Player
+p1 = P "me"   1 [] 
+p2 = P "you"  1 [] 
+p3 = P "ok"   2 [C Spade Ten,C Club Q]
+p4 = P "cool" 2 [C Heart K]
+allPlayers :: FourOf Player
+allPlayers = F p1 p2 p3 p4 
 card1,card2,card3,card4,card5,card6,card7 :: Card
 card1 = C Heart A
 card2 = C Spade J
@@ -21,49 +57,22 @@ card5 = C Diamond J
 card6 = C Club Nine
 card7 = C Club Q
 
-instance Ord Suit where
- compare _ _ = EQ
+--IO, procedural logic
+main :: IO ()
+main = trickloop startState 
 
-data Player = P String Team [Card] deriving (Show, Eq, Ord)
-
-data HandScore = HS Int Int
-data GameScore = GS Int Int
-
-playerOrder :: M.Map Player Player
-playerOrder = M.fromList [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]
-
-type Team = Int
-type CurrentPlayer = Player
-type CurrentHand   = [(Player,Card)]
--- in normal hand, 4 turns happen. Control for ending the hand
-type Turn = Int
-
-data State = S Player Player Player Player CurrentPlayer Turn CurrentHand HandScore GameScore
-
-p1,p2,p3,p4 :: Player
-p1 = P "me"   1 [C Heart A,C Diamond J] 
-p2 = P "you"  1 [C Club Nine] 
-p3 = P "ok"   2 [C Spade Ten,C Club Q]
-p4 = P "cool" 2 [C Heart K]
-
-startState :: State
-startState = S p1 p2 p3 p4 p2 0 [] (HS 0 0) (GS 0 0) 
-
---main :: IO ()
---main = handloop startState 
-
-handloop :: State -> IO ()
-handloop s = 
- do if (currentTurn s) < 4 
+trickloop :: State -> IO ()
+trickloop s = 
+ do startTrickState <- dealCards s
+    if (currentTurn s) < 4 
     then 
-     do newState <- singleTurn s  
-        handloop newState 
+     do newState <- singleTurn startTrickState  
+        trickloop newState 
     else
      do 
-        putStrLn "hand over"
+        putStrLn "trick over"
         return ()
    
-
 singleTurn :: State -> IO State
 singleTurn s = 
  do putStrLn $ "select card from your cards" ++ (show . getCards $ (currentPlayer s))
@@ -80,33 +89,52 @@ singleTurn s =
                  else
                   do putStrLn "you don't have that card"
                      return s
+
+--data State = S Player Player Player Player CurrentPlayer Turn CurrentTrick HandScore GameScore
+dealCards :: State -> IO State
+dealCards (S players cp _ _ _ hs gs) = 
+ do cards <- shuffle allCards
+    let (d1,rest1) = getFive cards
+        (d2,rest2) = getFive rest1
+        (d3,rest3) = getFive rest2
+        (d4,rest4) = getFive rest3
+        trump      = getOne  rest4 
+        dealtPlayers = (fmap dealPlayer (F d1 d2 d3 d4)) <*> players 
+    return (S dealtPlayers (firstPlayer dealtPlayers) 0 [] trump hs gs)
+   where getFive:: [Card] -> ([Card],[Card])
+         getFive (a:b:c:d:e:cs) = ([a,b,c,d,e],cs)
+         getFive _              = error "not enough cards to deal"
+         getOne :: [Card] -> Card
+         getOne (c:cs) = c
+         getOne _      = error "trump card not available"
 {-
- - can't do this until I have trump, can't get trump til I deal cards and handle that process
-scoreHand :: State -> IO State 
-scoreHand (S p1 p2 p3 p4 _ _ allCards hs gs) =
+ - can't do this until I have trump, can't get trump til I deal cards and handle that process, call this function on 'finishTrick'
+scoreTrick :: State -> IO State 
+scoreTrick (S p1 p2 p3 p4 _ _ allCards hs gs) =
  let (winName, winTeam) = sh' allCards
 
  where winTup :: [(Player,Card)] -> (Player,Card)
        winTup = foldr 
        sh :: [(Player,Card)] -> (String,Team)
        sh ac = (
+
+finishTrick = scoreTrick, update score, update beginning player based on winning player 
 -}
-getCards :: Player -> [Card]
-getCards (P _ _ cs) = cs 
 
-currentPlayer :: State -> Player
-currentPlayer (S _ _ _ _ cp _ _ _ _) = cp
-
-currentTurn :: State -> Turn 
-currentTurn (S _ _ _ _ _ t _ _ _) = t
-
+--pure logic
 handleValidCardPlay :: Card -> State -> State
-handleValidCardPlay c (S p1 p2 p3 p4 cp t ch hs gs) =  
- if      cp == p1 then S (removeCard c p1) p2 p3 p4 (playerOrder M.! cp) (t+1) ((p1,c) : ch) hs gs 
- else if cp == p2 then S p1 (removeCard c p2) p3 p4 (playerOrder M.! cp) (t+1) ((p2,c) : ch) hs gs 
- else if cp == p3 then S p1 p2 (removeCard c p3) p4 (playerOrder M.! cp) (t+1) ((p3,c) : ch) hs gs 
- else if cp == p4 then S p1 p2 p3 (removeCard c p4) (playerOrder M.! cp) (t+1) ((p4,c) : ch) hs gs 
+handleValidCardPlay c (S (F p1 p2 p3 p4) cp t ch trump hs gs) =  
+ if      cp == p1 then S (F (removeCard c p1) p2 p3 p4) (playerOrder M.! cp) (t+1) ((p1,c) : ch) trump hs gs
+ else if cp == p2 then S (F p1 (removeCard c p2) p3 p4) (playerOrder M.! cp) (t+1) ((p2,c) : ch) trump hs gs
+ else if cp == p3 then S (F p1 p2 (removeCard c p3) p4) (playerOrder M.! cp) (t+1) ((p3,c) : ch) trump hs gs 
+ else if cp == p4 then S (F p1 p2 p3 (removeCard c p4)) (playerOrder M.! cp) (t+1) ((p4,c) : ch) trump hs gs
  else error "current player not one of the four players"
+
+dealPlayer :: [Card] -> Player -> Player
+dealPlayer cs (P n t _) = P n t cs 
+
+firstPlayer :: FourOf Player -> Player
+firstPlayer (F p _ _ _) = p
 
 removeCard :: Card -> Player -> Player
 removeCard c (P t n cs) = P t n (remove c cs)
@@ -114,7 +142,6 @@ removeCard c (P t n cs) = P t n (remove c cs)
        remove _ [] = []
        remove c (x:xs) = if x == c then xs else remove c xs
 
--- still need to build in off suit trump jacks
 ordering :: Suit -> Suit -> Card -> Card -> Ordering
 ordering trumpSuit leadSuit c1 c2 = 
  let s1 = getSuit c1
@@ -148,6 +175,15 @@ isTrump trump (C s v) =
   Spade   -> (s == Club    && v == J)
   Club    -> (s == Spade   && v == J)
 
+--getters
+getCards :: Player -> [Card]
+getCards (P _ _ cs) = cs 
+
+currentPlayer :: State -> Player
+currentPlayer (S _ cp _ _ _ _ _) = cp
+
+currentTurn :: State -> Turn 
+currentTurn (S _ _ t _ _ _ _) = t
 
 getSuit :: Card -> Suit
 getSuit (C s _) = s
@@ -162,16 +198,3 @@ getTeam :: Player -> Team
 getTeam (P _ t _) = t
 
 
-shuffle :: [a] -> IO [a]
-shuffle xs = do
- ar <- newArray n xs
- forM [1..n] $ \i -> do
-  j <- randomRIO (i,n)
-  vi <- readArray ar i
-  vj <- readArray ar j
-  writeArray ar j vi
-  return vj
- where
-  n = length xs
-  newArray :: Int -> [a] -> IO (IOArray Int a)
-  newArray n xs =  newListArray (1,n) xs
